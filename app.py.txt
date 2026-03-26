@@ -1,0 +1,66 @@
+import streamlit as st
+import pandas as pd
+import sqlite3
+from datetime import datetime
+
+# Configuración de la Base de Datos
+conn = sqlite3.connect('muebles_negocio.db', check_same_thread=False)
+c = conn.cursor()
+
+# Crear tablas si no existen
+c.execute('''CREATE TABLE IF NOT EXISTS proyectos 
+             (id INTEGER PRIMARY KEY, cliente TEXT, mueble TEXT, suplidor TEXT, 
+              precio_venta REAL, costo_fabrica REAL, adelanto_cliente REAL, 
+              adelanto_suplidor REAL, estado TEXT)''')
+conn.commit()
+
+st.title("🪑 Gestión de Muebles a Medida")
+
+menu = ["Nuevo Proyecto", "Ver Proyectos", "Pagos y Abonos", "Reportes Financieros"]
+choice = st.sidebar.selectbox("Menú", menu)
+
+if choice == "Nuevo Proyecto":
+    st.subheader("Registrar Venta y Pedido a Fábrica")
+    with st.form("form_proyecto"):
+        cliente = st.text_input("Nombre del Cliente")
+        mueble = st.text_input("Descripción del Mueble (Medidas/Material)")
+        suplidor = st.text_input("Nombre del Suplidor (Fábrica)")
+        col1, col2 = st.columns(2)
+        p_venta = col1.number_input("Precio de Venta al Cliente", min_value=0.0)
+        c_fabrica = col2.number_input("Costo de Fábrica (Compra)", min_value=0.0)
+        
+        enviar = st.form_submit_button("Registrar Proyecto")
+        if enviar:
+            c.execute("INSERT INTO proyectos (cliente, mueble, suplidor, precio_venta, costo_fabrica, adelanto_cliente, adelanto_suplidor, estado) VALUES (?,?,?,?,?,?,?,?)",
+                      (cliente, mueble, suplidor, p_venta, c_fabrica, 0.0, 0.0, "Pendiente"))
+            conn.commit()
+            st.success(f"Proyecto para {cliente} registrado con éxito")
+
+elif choice == "Pagos y Abonos":
+    st.subheader("Control de Adelantos")
+    id_proy = st.number_input("ID del Proyecto", min_value=1)
+    tipo_pago = st.radio("Registrar pago de:", ["Cliente (Ingreso)", "Suplidor (Egreso)"])
+    monto = st.number_input("Monto del Abono/Adelanto", min_value=0.0)
+    
+    if st.button("Actualizar Saldo"):
+        campo = "adelanto_cliente" if tipo_pago == "Cliente (Ingreso)" else "adelanto_suplidor"
+        c.execute(f"UPDATE proyectos SET {campo} = {campo} + ? WHERE id = ?", (monto, id_proy))
+        conn.commit()
+        st.info("Saldo actualizado correctamente.")
+
+elif choice == "Reportes Financieros":
+    st.subheader("Balance General")
+    df = pd.read_sql("SELECT * FROM proyectos", conn)
+    
+    total_ventas = df['precio_venta'].sum()
+    total_compras = df['costo_fabrica'].sum()
+    cobrado = df['adelanto_cliente'].sum()
+    pagado_fabrica = df['adelanto_suplidor'].sum()
+    
+    st.metric("Ventas Totales", f"${total_ventas}")
+    st.metric("Beneficio Bruto Esperado", f"${total_ventas - total_compras}")
+    st.metric("Cuentas por Cobrar (Clientes)", f"${total_ventas - cobrado}")
+    st.metric("Cuentas por Pagar (Fábrica)", f"${total_compras - pagado_fabrica}")
+    
+    st.write("### Detalle de Proyectos")
+    st.dataframe(df)

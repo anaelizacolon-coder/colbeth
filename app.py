@@ -19,10 +19,9 @@ c.execute('''CREATE TABLE IF NOT EXISTS proyectos
               estado TEXT)''')
 conn.commit()
 
-# 2. INTERFAZ LATERAL
-st.set_page_config(page_title="Control de Muebles", layout="wide")
+st.set_page_config(page_title="Gestión Muebles Pro", layout="wide")
 st.sidebar.title("🛠️ Menú Principal")
-menu = ["Nuevo Proyecto", "Ver Proyectos", "Pagos y Abonos", "Reportes y Respaldo"]
+menu = ["Nuevo Proyecto", "Ver / Editar Proyectos", "Pagos y Abonos", "Reportes y Respaldo"]
 choice = st.sidebar.selectbox("Seleccione una opción", menu)
 
 # --- OPCIÓN 1: NUEVO PROYECTO ---
@@ -41,85 +40,94 @@ if choice == "Nuevo Proyecto":
         if st.form_submit_button("Guardar Proyecto"):
             if cliente and suplidor:
                 c.execute("INSERT INTO proyectos (cliente, mueble, suplidor, precio_venta, costo_fabrica, adelanto_cliente, adelanto_suplidor, estado) VALUES (?,?,?,?,?,?,?,?)",
-                          (cliente, mueble, suplidor, p_venta, c_fabrica, 0.0, 0.0, "En Proceso"))
+                          (cliente.upper(), mueble, suplidor.upper(), p_venta, c_fabrica, 0.0, 0.0, "En Proceso"))
                 conn.commit()
-                st.success(f"✅ Proyecto de {cliente} guardado correctamente.")
+                st.success(f"✅ Proyecto de {cliente} guardado.")
             else:
-                st.error("Por favor rellena los nombres de Cliente y Suplidor.")
+                st.error("Rellena los campos obligatorios.")
 
-# --- OPCIÓN 2: VER PROYECTOS ---
-elif choice == "Ver Proyectos":
-    st.header("📋 Listado General de Proyectos")
+# --- OPCIÓN 2: VER / EDITAR / ELIMINAR ---
+elif choice == "Ver / Editar Proyectos":
+    st.header("📋 Gestión de Proyectos")
     df = pd.read_sql("SELECT * FROM proyectos", conn)
+    
     if not df.empty:
-        busqueda = st.text_input("🔍 Buscar cliente o mueble:")
+        busqueda = st.text_input("🔍 Buscar por cliente o mueble:")
         if busqueda:
             df = df[df['cliente'].str.contains(busqueda, case=False) | df['mueble'].str.contains(busqueda, case=False)]
+        
         st.dataframe(df, use_container_width=True)
+        
+        st.write("---")
+        st.subheader("⚙️ Acciones de Proyecto")
+        col_ed1, col_ed2 = st.columns(2)
+        
+        id_accion = col_ed1.number_input("Ingrese el ID del proyecto para modificar/eliminar:", min_value=1, step=1)
+        accion = col_ed2.selectbox("Acción a realizar:", ["Seleccionar...", "Cambiar a Entregado", "Eliminar Proyecto"])
+        
+        if st.button("Ejecutar Acción"):
+            if accion == "Cambiar a Entregado":
+                c.execute("UPDATE proyectos SET estado = 'Entregado' WHERE id = ?", (id_accion,))
+                conn.commit()
+                st.success(f"Proyecto {id_accion} marcado como Entregado.")
+                st.rerun()
+            elif accion == "Eliminar Proyecto":
+                c.execute("DELETE FROM proyectos WHERE id = ?", (id_accion,))
+                conn.commit()
+                st.warning(f"Proyecto {id_accion} eliminado permanentemente.")
+                st.rerun()
     else:
-        st.info("No hay proyectos registrados aún.")
+        st.info("No hay proyectos.")
 
 # --- OPCIÓN 3: PAGOS Y ABONOS ---
 elif choice == "Pagos y Abonos":
-    st.header("💰 Registro de Pagos (Adelantos y Abonos)")
-    df = pd.read_sql("SELECT id, cliente, mueble, suplidor FROM proyectos", conn)
+    st.header("💰 Registro de Flujo de Caja")
+    df = pd.read_sql("SELECT id, cliente, mueble FROM proyectos WHERE estado != 'Entregado'", conn)
     
     if not df.empty:
-        # Seleccionar proyecto por ID y Nombre
         opciones = [f"ID {row['id']} - {row['cliente']} ({row['mueble'][:20]}...)" for index, row in df.iterrows()]
-        seleccion = st.selectbox("Seleccione el Proyecto:", opciones)
+        seleccion = st.selectbox("Seleccione el Proyecto Activo:", opciones)
         id_proy = int(seleccion.split(" ")[1])
         
-        tipo_pago = st.radio("¿Quién realiza/recibe el pago?", ["Cliente (Me pagan a mí)", "Suplidor (Yo pago a fábrica)"])
-        monto = st.number_input("Monto del Pago ($)", min_value=0.0)
+        tipo_pago = st.radio("Tipo de movimiento:", ["Cobro a Cliente (Ingreso)", "Pago a Fábrica (Egreso)"])
+        monto = st.number_input("Monto ($)", min_value=0.0)
         
-        if st.button("Registrar Pago"):
+        if st.button("Registrar Transacción"):
             campo = "adelanto_cliente" if "Cliente" in tipo_pago else "adelanto_suplidor"
             c.execute(f"UPDATE proyectos SET {campo} = {campo} + ? WHERE id = ?", (monto, id_proy))
             conn.commit()
-            st.success("💸 Pago registrado y saldo actualizado.")
+            st.success("Saldo actualizado con éxito.")
     else:
-        st.warning("Debe crear un proyecto primero.")
+        st.warning("No hay proyectos activos para cobrar/pagar.")
 
-# --- OPCIÓN 4: REPORTES Y RESPALDO ---
+# --- OPCIÓN 4: REPORTES SUMARIZADOS ---
 elif choice == "Reportes y Respaldo":
-    st.header("📊 Análisis Financiero")
+    st.header("📊 Resumen de Cuentas")
     df = pd.read_sql("SELECT * FROM proyectos", conn)
     
     if not df.empty:
-        # Cálculos de saldos
-        df['Por Cobrar (Cliente)'] = df['precio_venta'] - df['adelanto_cliente']
-        df['Por Pagar (Suplidor)'] = df['costo_fabrica'] - df['adelanto_suplidor']
+        df['Deuda Cliente'] = df['precio_venta'] - df['adelanto_cliente']
+        df['Deuda Suplidor'] = df['costo_fabrica'] - df['adelanto_suplidor']
         
-        tab1, tab2, tab3 = st.tabs(["💵 Cuentas por Cobrar", "🏭 Cuentas por Pagar", "📈 Beneficios Totales"])
+        t1, t2, t3 = st.tabs(["👥 Resumen por Cliente", "🏭 Resumen por Suplidor", "📦 Respaldo"])
         
-        with tab1:
-            st.subheader("Saldos pendientes de Clientes")
-            cobros = df[df['Por Cobrar (Cliente)'] > 0][['cliente', 'mueble', 'precio_venta', 'adelanto_cliente', 'Por Cobrar (Cliente)']]
-            st.table(cobros)
-            st.metric("Total por Cobrar", f"${cobros['Por Cobrar (Cliente)'].sum():,.2f}")
+        with t1:
+            st.subheader("¿Cuánto me debe cada cliente?")
+            resumen_clientes = df.groupby('cliente')['Deuda Cliente'].sum().reset_index()
+            resumen_clientes = resumen_clientes[resumen_clientes['Deuda Cliente'] > 0]
+            st.table(resumen_clientes.style.format({"Deuda Cliente": "${:,.2f}"}))
+            st.metric("TOTAL POR COBRAR", f"${resumen_clientes['Deuda Cliente'].sum():,.2f}")
 
-        with tab2:
-            st.subheader("Deudas pendientes con Suplidores")
-            pagos = df[df['Por Pagar (Suplidor)'] > 0][['suplidor', 'mueble', 'costo_fabrica', 'adelanto_suplidor', 'Por Pagar (Suplidor)']]
-            st.table(pagos)
-            st.metric("Total por Pagar", f"${pagos['Por Pagar (Suplidor)'].sum():,.2f}")
+        with t2:
+            st.subheader("¿Cuánto le debo a cada fábrica?")
+            resumen_suplidores = df.groupby('suplidor')['Deuda Suplidor'].sum().reset_index()
+            resumen_suplidores = resumen_suplidores[resumen_suplidores['Deuda Suplidor'] > 0]
+            st.table(resumen_suplidores.style.format({"Deuda Suplidor": "${:,.2f}"}))
+            st.metric("TOTAL POR PAGAR", f"${resumen_suplidores['Deuda Suplidor'].sum():,.2f}")
             
-        with tab3:
-            total_v = df['precio_venta'].sum()
-            total_c = df['costo_fabrica'].sum()
-            st.metric("Ventas Totales", f"${total_v:,.2f}")
-            st.metric("Costo Total Fábrica", f"${total_c:,.2f}")
-            st.metric("Beneficio Bruto Estimado", f"${(total_v - total_c):,.2f}", delta_color="normal")
-
-        st.write("---")
-        st.subheader("💾 Copia de Seguridad")
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="Descargar todo a Excel (CSV)",
-            data=csv,
-            file_name=f'respaldo_negocio_{datetime.now().strftime("%Y-%m-%d")}.csv',
-            mime='text/csv',
-        )
+        with t3:
+            st.subheader("Exportar Datos")
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button("Descargar Excel (CSV)", csv, f"respaldo_{datetime.now().strftime('%Y-%m-%d')}.csv", "text/csv")
     else:
-        st.info("No hay datos para generar reportes.")
+        st.info("Sin datos.")

@@ -76,25 +76,55 @@ elif choice == "Pagos y Abonos":
             conn.commit()
             st.success("✅ Registrado.")
 
-# --- OPCIÓN 4: CORREGIR DATOS ---
+# --- OPCIÓN 4: CORREGIR DATOS (EDICIÓN TOTAL) ---
 elif choice == "✏️ Corregir Datos":
-    st.header("✏️ Corregir Montos")
+    st.header("✏️ Editor Maestro de Registros")
+    st.warning("Cualquier cambio aquí sobrescribirá la información anterior permanentemente.")
+    
     df = pd.read_sql("SELECT * FROM proyectos", conn)
     if not df.empty:
-        opciones = [f"ID {row['id']} - {row['cliente']}" for _, row in df.iterrows()]
-        selec = st.selectbox("Proyecto:", opciones)
+        opciones = [f"ID {row['id']} - {row['cliente']} | {row['mueble'][:30]}" for _, row in df.iterrows()]
+        selec = st.selectbox("Seleccione el proyecto que desea modificar por completo:", opciones)
         id_p = int(selec.split(" ")[1])
+        
+        # Obtener datos actuales del registro
         p = df[df['id'] == id_p].iloc[0]
-        with st.form("edit"):
-            n_pv = st.number_input("Precio Venta", value=float(p['precio_venta']))
-            n_cf = st.number_input("Costo Fábrica", value=float(p['costo_fabrica']))
-            n_ac = st.number_input("Adelanto Cliente", value=float(p['adelanto_cliente']))
-            n_as = st.number_input("Pago Fábrica", value=float(p['adelanto_suplidor']))
-            if st.form_submit_button("Actualizar"):
-                c.execute("UPDATE proyectos SET precio_venta=?, costo_fabrica=?, adelanto_cliente=?, adelanto_suplidor=? WHERE id=?",
-                          (n_pv, n_cf, n_ac, n_as, id_p))
+        
+        with st.form("edit_maestro"):
+            st.subheader(f"Editando Proyecto ID: {id_p}")
+            
+            col_1, col_2 = st.columns(2)
+            n_cliente = col_1.text_input("Nombre del Cliente", value=str(p['cliente']))
+            n_suplidor = col_2.text_input("Suplidor / Fábrica", value=str(p['suplidor']))
+            
+            n_mueble = st.text_area("Descripción del Mueble", value=str(p['mueble']))
+            
+            col_3, col_4, col_5 = st.columns(3)
+            n_fecha = col_3.text_input("Fecha Creación (AAAA-MM-DD)", value=str(p['fecha_creacion']))
+            n_estado = col_4.selectbox("Estado", ["En Proceso", "Entregado"], index=0 if p['estado'] == "En Proceso" else 1)
+            
+            st.divider()
+            st.write("### Ajuste de Montos Económicos")
+            c_a, c_b = st.columns(2)
+            n_pv = c_a.number_input("Precio Venta ($)", value=float(p['precio_venta']))
+            n_cf = c_b.number_input("Costo Fábrica ($)", value=float(p['costo_fabrica']))
+            
+            c_c, c_d = st.columns(2)
+            n_ac = c_c.number_input("Total Adelantos del Cliente ($)", value=float(p['adelanto_cliente']))
+            n_as = c_d.number_input("Total Pagado a la Fábrica ($)", value=float(p['adelanto_suplidor']))
+            
+            if st.form_submit_button("💾 GUARDAR TODOS LOS CAMBIOS"):
+                c.execute('''UPDATE proyectos SET 
+                             fecha_creacion=?, cliente=?, mueble=?, suplidor=?, 
+                             precio_venta=?, costo_fabrica=?, adelanto_cliente=?, 
+                             adelanto_suplidor=?, estado=? 
+                             WHERE id=?''', 
+                          (n_fecha, n_cliente.upper(), n_mueble, n_suplidor.upper(), 
+                           n_pv, n_cf, n_ac, n_as, n_estado, id_p))
                 conn.commit()
-                st.success("Corregido.")
+                st.success(f"¡El proyecto {id_p} ha sido actualizado con éxito!")
+    else:
+        st.info("No hay proyectos para editar.")
 
 # --- OPCIÓN 5: GASTOS VARIOS ---
 elif choice == "Gastos Varios":
@@ -109,39 +139,20 @@ elif choice == "Gastos Varios":
 
 # --- OPCIÓN 6: REPORTES SUMARIZADOS ---
 elif choice == "Reportes y Respaldo":
-    st.header("📊 Resumen de Cuentas Sumarizadas")
-    
-    # Filtro de fecha
-    col_f1, col_f2 = st.columns(2)
-    f_inicio = col_f1.date_input("Desde:", datetime(datetime.now().year, datetime.now().month, 1))
-    f_fin = col_f2.date_input("Hasta:", datetime.now())
-
+    st.header("📊 Resumen de Cuentas")
     df_p = pd.read_sql(f"SELECT * FROM proyectos", conn)
     
     if not df_p.empty:
-        # Cálculos individuales de saldos
         df_p['Saldo Cliente'] = df_p['precio_venta'] - df_p['adelanto_cliente']
         df_p['Saldo Suplidor'] = df_p['costo_fabrica'] - df_p['adelanto_suplidor']
         
-        tab1, tab2, tab3 = st.tabs(["👥 Cuentas por Cobrar (Clientes)", "🏭 Cuentas por Pagar (Suplidores)", "📦 Respaldo"])
+        tab1, tab2, tab3 = st.tabs(["👥 Cuentas por Cobrar", "🏭 Cuentas por Pagar", "📦 Respaldo"])
         
         with tab1:
-            st.subheader("Total por Cobrar agrupado por Cliente")
-            # Agrupar y sumarizar
             resumen_c = df_p.groupby('cliente')['Saldo Cliente'].sum().reset_index()
-            resumen_c = resumen_c[resumen_c['Saldo Cliente'] > 0] # Solo los que deben
-            st.table(resumen_c.style.format({"Saldo Cliente": "${:,.2f}"}))
-            st.metric("DEUDA TOTAL DE CLIENTES", f"${resumen_c['Saldo Cliente'].sum():,.2f}")
-
+            st.table(resumen_c[resumen_c['Saldo Cliente'] > 0].style.format({"Saldo Cliente": "${:,.2f}"}))
         with tab2:
-            st.subheader("Total por Pagar agrupado por Suplidor")
-            # Agrupar y sumarizar
             resumen_s = df_p.groupby('suplidor')['Saldo Suplidor'].sum().reset_index()
-            resumen_s = resumen_s[resumen_s['Saldo Suplidor'] > 0] # Solo deudas reales
-            st.table(resumen_s.style.format({"Saldo Suplidor": "${:,.2f}"}))
-            st.metric("DEUDA TOTAL CON FÁBRICAS", f"${resumen_s['Saldo Suplidor'].sum():,.2f}")
-            
+            st.table(resumen_s[resumen_s['Saldo Suplidor'] > 0].style.format({"Saldo Suplidor": "${:,.2f}"}))
         with tab3:
-            st.download_button("Descargar Excel (CSV)", df_p.to_csv(index=False).encode('utf-8'), "respaldo.csv")
-    else:
-        st.info("No hay datos para mostrar.")
+            st.download_button("Descargar Respaldo (CSV)", df_p.to_csv(index=False).encode('utf-8'), "muebleria.csv")

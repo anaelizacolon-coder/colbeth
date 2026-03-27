@@ -58,26 +58,6 @@ elif choice == "Ver / Gestionar Proyectos":
     else:
         st.info("No hay proyectos registrados.")
 
-# --- OPCIÓN 3: PAGOS Y ABONOS ---
-elif choice == "Pagos y Abonos":
-    st.header("💰 Registrar Movimiento de Dinero")
-    df = pd.read_sql("SELECT id, cliente, mueble FROM proyectos WHERE estado != 'Entregado'", conn)
-    if not df.empty:
-        opciones = [f"ID {row['id']} - {row['cliente']}" for _, row in df.iterrows()]
-        selec = st.selectbox("Seleccione Proyecto:", opciones)
-        id_p = int(selec.split(" ")[1])
-        col_t, col_f = st.columns(2)
-        tipo = col_t.radio("Tipo de Movimiento:", ["Cobro a Cliente", "Pago a Fábrica"])
-        fecha_mov = col_f.date_input("Fecha:", date.today())
-        monto = st.number_input("Monto ($)", min_value=0.0)
-        if st.button("Registrar en Historial y Balances"):
-            campo = "adelanto_cliente" if "Cliente" in tipo else "adelanto_suplidor"
-            c.execute(f"UPDATE proyectos SET {campo} = {campo} + ? WHERE id = ?", (monto, id_p))
-            c.execute("INSERT INTO historial_pagos (proyecto_id, fecha, tipo_movimiento, monto) VALUES (?,?,?,?)",
-                      (id_p, fecha_mov.strftime("%Y-%m-%d"), tipo, monto))
-            conn.commit()
-            st.success(f"✅ {tipo} por ${monto:,.2f} registrado.")
-
 # --- OPCIÓN 4: CORREGIR DATOS (EDICIÓN Y ELIMINACIÓN) ---
 elif choice == "✏️ Corregir Datos":
     st.header("✏️ Editor Maestro y Eliminación")
@@ -89,7 +69,6 @@ elif choice == "✏️ Corregir Datos":
         p = df[df['id'] == id_p].iloc[0]
         
         with st.form("edit_maestro"):
-            st.subheader(f"Editando Proyecto ID: {id_p}")
             n_cliente = st.text_input("Cliente", value=str(p['cliente']))
             n_mueble = st.text_area("Mueble", value=str(p['mueble']))
             n_suplidor = st.text_input("Suplidor", value=str(p['suplidor']))
@@ -100,28 +79,44 @@ elif choice == "✏️ Corregir Datos":
             n_as = c2.number_input("Pagos Fábrica", value=float(p['adelanto_suplidor']))
             n_est = st.selectbox("Estado", ["En Proceso", "Entregado"], index=0 if p['estado']=="En Proceso" else 1)
             
-            # Botones dentro del formulario
             col_save, col_del = st.columns([1,1])
             save_btn = col_save.form_submit_button("💾 GUARDAR CAMBIOS")
-            del_btn = col_del.form_submit_button("🗑️ ELIMINAR PROYECTO", type="secondary")
+            del_btn = col_del.form_submit_button("🗑️ ELIMINAR PROYECTO")
             
             if save_btn:
                 c.execute('''UPDATE proyectos SET cliente=?, mueble=?, suplidor=?, precio_venta=?, 
                              costo_fabrica=?, adelanto_cliente=?, adelanto_suplidor=?, estado=? WHERE id=?''',
                           (n_cliente.upper(), n_mueble, n_suplidor.upper(), n_pv, n_cf, n_ac, n_as, n_est, id_p))
                 conn.commit()
-                st.success("✅ Registro actualizado correctamente.")
+                st.success("✅ Registro actualizado.")
                 st.rerun()
 
             if del_btn:
-                # Al ser un botón de formulario, necesitamos una confirmación extra o ejecutar directo
                 c.execute("DELETE FROM proyectos WHERE id=?", (id_p,))
                 c.execute("DELETE FROM historial_pagos WHERE proyecto_id=?", (id_p,))
                 conn.commit()
-                st.warning(f"⚠️ El proyecto ID {id_p} ha sido eliminado permanentemente.")
+                st.warning(f"⚠️ Proyecto {id_p} eliminado.")
                 st.rerun()
-    else:
-        st.info("No hay proyectos para editar.")
+
+# --- OPCIÓN 3: PAGOS Y ABONOS ---
+elif choice == "Pagos y Abonos":
+    st.header("💰 Registrar Movimiento de Dinero")
+    df = pd.read_sql("SELECT id, cliente, mueble FROM proyectos WHERE estado != 'Entregado'", conn)
+    if not df.empty:
+        opciones = [f"ID {row['id']} - {row['cliente']}" for _, row in df.iterrows()]
+        selec = st.selectbox("Seleccione Proyecto:", opciones)
+        id_p = int(selec.split(" ")[1])
+        col_t, col_f = st.columns(2)
+        tipo = col_t.radio("Tipo:", ["Cobro a Cliente", "Pago a Fábrica"])
+        fecha_mov = col_f.date_input("Fecha:", date.today())
+        monto = st.number_input("Monto ($)", min_value=0.0)
+        if st.button("Registrar"):
+            campo = "adelanto_cliente" if "Cliente" in tipo else "adelanto_suplidor"
+            c.execute(f"UPDATE proyectos SET {campo} = {campo} + ? WHERE id = ?", (monto, id_p))
+            c.execute("INSERT INTO historial_pagos (proyecto_id, fecha, tipo_movimiento, monto) VALUES (?,?,?,?)",
+                      (id_p, fecha_mov.strftime("%Y-%m-%d"), tipo, monto))
+            conn.commit()
+            st.success(f"✅ Registrado.")
 
 # --- OPCIÓN 5: GASTOS VARIOS ---
 elif choice == "Gastos Varios":
@@ -136,7 +131,7 @@ elif choice == "Gastos Varios":
             conn.commit()
             st.success("Gasto guardado.")
 
-# --- OPCIÓN 6: REPORTES ---
+# --- OPCIÓN 6: REPORTES Y ESTADO DE RESULTADOS (CORREGIDO DECIMALES) ---
 elif choice == "Reportes y Respaldo":
     st.header("📊 Inteligencia Financiera")
     st.sidebar.divider()
@@ -162,17 +157,38 @@ elif choice == "Reportes y Respaldo":
         m2.metric("PAGOS FÁBRICA", f"${pagos_f:,.2f}")
         m3.metric("GASTOS VARIOS", f"${gastos_v:,.2f}")
         m4.metric("BENEFICIO NETO", f"${beneficio:,.2f}")
+        
         st.write("### Detalle de Gastos")
-        st.table(df_gastos)
+        if not df_gastos.empty:
+            # Formateo de tabla a 2 decimales
+            st.table(df_gastos.style.format({"monto": "${:,.2f}"}))
+        else:
+            st.info("Sin gastos en este periodo.")
 
     with tab2:
         if not df_proy.empty:
             df_proy['Saldo Cliente'] = df_proy['precio_venta'] - df_proy['adelanto_cliente']
             df_proy['Saldo Suplidor'] = df_proy['costo_fabrica'] - df_proy['adelanto_suplidor']
-            st.subheader("Cuentas por Cobrar")
-            st.table(df_proy.groupby('cliente')['Saldo Cliente'].sum().reset_index().query('`Saldo Cliente` > 0'))
-            st.subheader("Cuentas por Pagar")
-            st.table(df_proy.groupby('suplidor')['Saldo Suplidor'].sum().reset_index().query('`Saldo Suplidor` > 0'))
+            
+            # Agrupar por Cliente y Formatear
+            c_cobrar = df_proy.groupby('cliente')['Saldo Cliente'].sum().reset_index()
+            c_cobrar = c_cobrar[c_cobrar['Saldo Cliente'] > 0]
+            
+            # Agrupar por Suplidor y Formatear
+            c_pagar = df_proy.groupby('suplidor')['Saldo Suplidor'].sum().reset_index()
+            c_pagar = c_pagar[c_pagar['Saldo Suplidor'] > 0]
+            
+            st.subheader("Cuentas por Cobrar (Clientes)")
+            if not c_cobrar.empty:
+                st.table(c_cobrar.style.format({"Saldo Cliente": "${:,.2f}"}))
+            else:
+                st.success("✅ ¡No hay saldos pendientes de clientes!")
+
+            st.subheader("Cuentas por Pagar (Fábricas)")
+            if not c_pagar.empty:
+                st.table(c_pagar.style.format({"Saldo Suplidor": "${:,.2f}"}))
+            else:
+                st.success("✅ ¡No debes nada a las fábricas!")
         
     with tab3:
         st.download_button("Descargar CSV", df_proy.to_csv(index=False).encode('utf-8'), "muebleria.csv")

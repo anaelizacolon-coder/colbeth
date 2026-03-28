@@ -78,8 +78,6 @@ elif choice == "Pagos y Abonos":
                 st.success("✅ Dinero registrado correctamente.")
                 st.rerun()
     
-    with tab_sal:
-        if not df_p.empty:
             df_p['Por Cobrar'] = df_p['precio_venta'] - df_p['adelanto_cliente']
             df_p['Por Pagar'] = df_p['costo_fabrica'] - df_p['adelanto_suplidor']
             c_cli, c_sup = st.columns(2)

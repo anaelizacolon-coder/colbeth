@@ -87,7 +87,6 @@ with tab_sal:
             c_sup.subheader("Pendiente Pago Fábrica")
             c_sup.table(df_p[df_p['Por Pagar'] > 0][['suplidor', 'mueble', 'Por Pagar']].style.format({"Por Pagar": "${:,.2f}"}))
 
-
 # --- 4. CORREGIR DATOS ---
 elif choice == "✏️ Corregir Datos":
     st.header("✏️ Editor Maestro")

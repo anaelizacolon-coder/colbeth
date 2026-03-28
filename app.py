@@ -77,6 +77,13 @@ elif choice == "Pagos y Abonos":
                 conn.commit()
                 st.success("✅ Dinero registrado correctamente.")
                 st.rerun()
+# Consultas filtradas
+    df_h = pd.read_sql(f"SELECT h.fecha, p.cliente, p.mueble, h.tipo_movimiento, h.monto FROM historial_pagos h JOIN proyectos p ON h.proyecto_id = p.id WHERE h.fecha BETWEEN '{s_ini}' AND '{s_fin}'", conn)
+    df_g = pd.read_sql(f"SELECT * FROM gastos_varios WHERE fecha BETWEEN '{s_ini}' AND '{s_fin}'", conn)
+    df_p = pd.read_sql("SELECT * FROM proyectos", conn)
+
+    tab_res, tab_sal = st.tabs(["📉 Resultados Periodo", "👥 Saldos Pendientes"])
+
 
 # --- 4. CORREGIR DATOS ---
 elif choice == "✏️ Corregir Datos":

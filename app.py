@@ -57,6 +57,16 @@ if choice == "Nuevo Proyecto":
                 st.rerun()
 
 # --- 3. PAGOS Y ABONOS ---
+    with tab_sal:
+        if not df_p.empty:
+            df_p['Por Cobrar'] = df_p['precio_venta'] - df_p['adelanto_cliente']
+            df_p['Por Pagar'] = df_p['costo_fabrica'] - df_p['adelanto_suplidor']
+            c_cli, c_sup = st.columns(2)
+            c_cli.subheader("Deudas de Clientes")
+            c_cli.table(df_p[df_p['Por Cobrar'] > 0][['cliente', 'mueble', 'Por Cobrar']].style.format({"Por Cobrar": "${:,.2f}"}))
+            c_sup.subheader("Pendiente Pago Fábrica")
+            c_sup.table(df_p[df_p['Por Pagar'] > 0][['suplidor', 'mueble', 'Por Pagar']].style.format({"Por Pagar": "${:,.2f}"}))
+            
 elif choice == "Pagos y Abonos":
     st.header("💰 Registrar Movimiento de Caja")
     df_act = pd.read_sql("SELECT id, cliente, mueble FROM proyectos WHERE estado != 'Entregado'", conn)

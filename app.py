@@ -77,6 +77,7 @@ elif choice == "Pagos y Abonos":
                 conn.commit()
                 st.success("✅ Dinero registrado correctamente.")
                 st.rerun()
+    
     with tab_sal:
         if not df_p.empty:
             df_p['Por Cobrar'] = df_p['precio_venta'] - df_p['adelanto_cliente']

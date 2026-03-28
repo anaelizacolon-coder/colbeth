@@ -10,13 +10,13 @@ def get_connection():
 conn = get_connection()
 c = conn.cursor()
 
-# Mantenimiento de tablas
+# Inicialización de Tablas
 c.execute('CREATE TABLE IF NOT EXISTS proyectos (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha_creacion TEXT, cliente TEXT, mueble TEXT, suplidor TEXT, precio_venta REAL, costo_fabrica REAL, adelanto_cliente REAL, adelanto_suplidor REAL, estado TEXT)')
 c.execute('CREATE TABLE IF NOT EXISTS historial_pagos (id INTEGER PRIMARY KEY AUTOINCREMENT, proyecto_id INTEGER, fecha TEXT, tipo_movimiento TEXT, monto REAL)')
 c.execute('CREATE TABLE IF NOT EXISTS gastos_varios (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, concepto TEXT, monto REAL)')
 conn.commit()
 
-st.set_page_config(page_title="Mueblería Pro v32", layout="wide")
+st.set_page_config(page_title="Mueblería Pro v33", layout="wide")
 menu = ["Nuevo Proyecto", "Ver / Gestionar Proyectos", "Pagos y Abonos", "✏️ Corregir Datos", "Gastos Varios", "Reportes y Respaldo"]
 choice = st.sidebar.selectbox("Menú", menu)
 
@@ -28,10 +28,10 @@ if choice == "Nuevo Proyecto":
     with st.form("f_n"):
         f = st.date_input("Fecha", date.today())
         c1, c2 = st.columns(2)
-        cl_s = c1.selectbox("Cliente", ["+ Nuevo"] + clientes_lista)
-        cl_f = c1.text_input("Nombre Cliente").upper() if cl_s == "+ Nuevo" else cl_s
-        su_s = c2.selectbox("Suplidor", ["+ Nuevo"] + suplidores_lista)
-        su_f = c2.text_input("Nombre Suplidor").upper() if su_s == "+ Nuevo" else su_s
+        cl_f = c1.selectbox("Cliente", ["+ Nuevo"] + clientes_lista)
+        cl_f = c1.text_input("Nombre Cliente").upper() if cl_f == "+ Nuevo" else cl_f
+        su_f = c2.selectbox("Suplidor", ["+ Nuevo"] + suplidores_lista)
+        su_f = c2.text_input("Nombre Suplidor").upper() if su_f == "+ Nuevo" else su_f
         mu = st.text_area("Descripción")
         p_v = st.number_input("Precio Venta ($)", min_value=0.0)
         c_f = st.number_input("Costo Fábrica ($)", min_value=0.0)
@@ -43,10 +43,8 @@ if choice == "Nuevo Proyecto":
 # --- 2. GESTIONAR ---
 elif choice == "Ver / Gestionar Proyectos":
     st.header("📋 Listado de Proyectos")
-    df = pd.read_sql("SELECT * FROM proyectos", conn)
+    df = pd.read_sql("SELECT * FROM proyectos", conn).fillna(0)
     if not df.empty:
-        # Llenamos vacíos para evitar errores visuales
-        df = df.fillna(0)
         st.dataframe(df.style.format({"precio_venta": "${:,.2f}", "costo_fabrica": "${:,.2f}", "adelanto_cliente": "${:,.2f}", "adelanto_suplidor": "${:,.2f}"}), use_container_width=True)
 
 # --- 3. PAGOS ---
@@ -88,22 +86,4 @@ elif choice == "✏️ Corregir Datos":
                     conn.commit(); st.rerun()
     with t2:
         df_hi = pd.read_sql("SELECT h.*, p.cliente FROM historial_pagos h JOIN proyectos p ON h.proyecto_id = p.id ORDER BY h.id DESC", conn)
-        if not df_hi.empty:
-            sel_h = st.selectbox("Pago:", [f"ID {r['id']} | {r['cliente']} | ${r['monto']}" for _, r in df_hi.iterrows()])
-            id_h = int(sel_h.split(" ")[1])
-            h = df_hi[df_hi['id'] == id_h].iloc[0]
-            if st.button("🚫 Eliminar este pago"):
-                campo = "adelanto_cliente" if "Cliente" in h['tipo_movimiento'] else "adelanto_suplidor"
-                c.execute(f"UPDATE proyectos SET {campo} = IFNULL({campo}, 0) - ? WHERE id = ?", (h['monto'], h['proyecto_id']))
-                c.execute("DELETE FROM historial_pagos WHERE id=?", (id_h,))
-                conn.commit(); st.rerun()
-
-# --- 5. REPORTES (Blindados contra valores nulos) ---
-elif choice == "Reportes y Respaldo":
-    st.header("📊 Reportes y Respaldo")
-    
-    if st.button("📥 Descargar Respaldo Excel"):
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            pd.read_sql("SELECT * FROM proyectos", conn).to_excel(writer, sheet_name='Proyectos', index=False)
-            pd.read_sql("SELECT * FROM historial_pagos", conn).to_excel(
+        if not df_

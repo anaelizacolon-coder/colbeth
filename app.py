@@ -79,13 +79,13 @@ elif choice == "Pagos y Abonos":
                 st.rerun()
     
         tab_sal = st.tabs(["👥 Saldos Pendientes"])
-            df_p['Por Cobrar'] = df_p['precio_venta'] - df_p['adelanto_cliente']
-            df_p['Por Pagar'] = df_p['costo_fabrica'] - df_p['adelanto_suplidor']
-            c_cli, c_sup = st.columns(2)
-            c_cli.subheader("Deudas de Clientes")
-            c_cli.table(df_p[df_p['Por Cobrar'] > 0][['cliente', 'mueble', 'Por Cobrar']].style.format({"Por Cobrar": "${:,.2f}"}))
-            c_sup.subheader("Pendiente Pago Fábrica")
-            c_sup.table(df_p[df_p['Por Pagar'] > 0][['suplidor', 'mueble', 'Por Pagar']].style.format({"Por Pagar": "${:,.2f}"}))
+        df_p['Por Cobrar'] = df_p['precio_venta'] - df_p['adelanto_cliente']
+        df_p['Por Pagar'] = df_p['costo_fabrica'] - df_p['adelanto_suplidor']
+        c_cli, c_sup = st.columns(2)
+        c_cli.subheader("Deudas de Clientes")
+        c_cli.table(df_p[df_p['Por Cobrar'] > 0][['cliente', 'mueble', 'Por Cobrar']].style.format({"Por Cobrar": "${:,.2f}"}))
+        c_sup.subheader("Pendiente Pago Fábrica")
+        c_sup.table(df_p[df_p['Por Pagar'] > 0][['suplidor', 'mueble', 'Por Pagar']].style.format({"Por Pagar": "${:,.2f}"}))
 
 # --- 4. CORREGIR DATOS ---
 elif choice == "✏️ Corregir Datos":

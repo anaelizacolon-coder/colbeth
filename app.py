@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 from datetime import datetime, date
+import io
 
 def get_connection():
     return sqlite3.connect('muebles_negocio.db', check_same_thread=False)
@@ -9,13 +10,13 @@ def get_connection():
 conn = get_connection()
 c = conn.cursor()
 
-# Tablas iniciales
+# Estructura de Base de Datos
 c.execute('CREATE TABLE IF NOT EXISTS proyectos (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha_creacion TEXT, cliente TEXT, mueble TEXT, suplidor TEXT, precio_venta REAL, costo_fabrica REAL, adelanto_cliente REAL, adelanto_suplidor REAL, estado TEXT)')
 c.execute('CREATE TABLE IF NOT EXISTS historial_pagos (id INTEGER PRIMARY KEY AUTOINCREMENT, proyecto_id INTEGER, fecha TEXT, tipo_movimiento TEXT, monto REAL)')
 c.execute('CREATE TABLE IF NOT EXISTS gastos_varios (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, concepto TEXT, monto REAL)')
 conn.commit()
 
-st.set_page_config(page_title="Mueblería Pro v29", layout="wide")
+st.set_page_config(page_title="Mueblería Pro v30", layout="wide")
 menu = ["Nuevo Proyecto", "Ver / Gestionar Proyectos", "Pagos y Abonos", "✏️ Corregir Datos", "Gastos Varios", "Reportes y Respaldo"]
 choice = st.sidebar.selectbox("Menú", menu)
 
@@ -41,7 +42,16 @@ if choice == "Nuevo Proyecto":
             conn.commit()
             st.rerun()
 
-# --- 2. PAGOS Y ABONOS ---
+# --- 2. VER PROYECTOS ---
+elif choice == "Ver / Gestionar Proyectos":
+    st.header("📋 Listado de Proyectos")
+    df = pd.read_sql("SELECT * FROM proyectos", conn)
+    if not df.empty:
+        st.dataframe(df.style.format({"precio_venta": "${:,.2f}", "costo_fabrica": "${:,.2f}", "adelanto_cliente": "${:,.2f}", "adelanto_suplidor": "${:,.2f}"}), use_container_width=True)
+    else:
+        st.info("No hay proyectos registrados.")
+
+# --- 3. PAGOS Y ABONOS ---
 elif choice == "Pagos y Abonos":
     st.header("💰 Cobros y Pagos")
     df_p = pd.read_sql("SELECT id, cliente, mueble, suplidor FROM proyectos WHERE estado != 'Entregado'", conn)
@@ -59,10 +69,10 @@ elif choice == "Pagos y Abonos":
                 conn.commit()
                 st.rerun()
 
-# --- 3. CORREGIR DATOS ---
+# --- 4. CORREGIR DATOS (Sincronización Reforzada) ---
 elif choice == "✏️ Corregir Datos":
     st.header("✏️ Editor Maestro")
-    t1, t2 = st.tabs(["📋 Proyectos", "💸 Pagos Individuales"])
+    t1, t2 = st.tabs(["📋 Editar Proyectos", "💸 Editar/Anular Pagos"])
     with t1:
         df_pro = pd.read_sql("SELECT * FROM proyectos", conn)
         if not df_pro.empty:
@@ -100,6 +110,7 @@ elif choice == "✏️ Corregir Datos":
                 cs, ca = st.columns(2)
                 if cs.form_submit_button("💾 GUARDAR"):
                     campo = "adelanto_cliente" if "Cliente" in h['tipo_movimiento'] else "adelanto_suplidor"
+                    # Corregimos el total en la tabla PROYECTOS y luego en el historial
                     c.execute(f"UPDATE proyectos SET {campo} = {campo} - ? + ? WHERE id = ?", (h['monto'], mn, h['proyecto_id']))
                     c.execute("UPDATE historial_pagos SET fecha=?, monto=? WHERE id=?", (fn.strftime("%Y-%m-%d"), mn, id_h))
                     conn.commit()
@@ -112,61 +123,53 @@ elif choice == "✏️ Corregir Datos":
                         conn.commit()
                         st.rerun()
 
-# --- 4. REPORTES (RESTAURADO COMPLETO) ---
+# --- 5. REPORTES Y RESPALDO ---
 elif choice == "Reportes y Respaldo":
     st.header("📊 Inteligencia de Negocio")
+    
+    # BOTÓN DE RESPALDO EXCEL
+    st.subheader("🛡️ Respaldo de Seguridad")
+    if st.button("Generar Archivo de Respaldo (Excel)"):
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            pd.read_sql("SELECT * FROM proyectos", conn).to_excel(writer, sheet_name='Proyectos', index=False)
+            pd.read_sql("SELECT * FROM historial_pagos", conn).to_excel(writer, sheet_name='Historial_Pagos', index=False)
+            pd.read_sql("SELECT * FROM gastos_varios", conn).to_excel(writer, sheet_name='Gastos_Varios', index=False)
+        st.download_button(label="📥 Descargar Respaldo.xlsx", data=output.getvalue(), file_name=f"Respaldo_Muebleria_{date.today()}.xlsx")
+
+    st.divider()
     f1 = st.sidebar.date_input("Desde", date(date.today().year, date.today().month, 1))
     f2 = st.sidebar.date_input("Hasta", date.today())
     
-    # Consultas
     df_h = pd.read_sql(f"SELECT h.fecha, p.cliente, p.suplidor, h.tipo_movimiento, h.monto FROM historial_pagos h JOIN proyectos p ON h.proyecto_id = p.id WHERE h.fecha BETWEEN '{f1}' AND '{f2}'", conn)
     df_g = pd.read_sql(f"SELECT * FROM gastos_varios WHERE fecha BETWEEN '{f1}' AND '{f2}'", conn)
     df_p = pd.read_sql("SELECT * FROM proyectos", conn)
 
     t1, t2 = st.tabs(["📉 Resultados Periodo", "👥 Deudas y Pendientes"])
-    
     with t1:
         ing = df_h[df_h['tipo_movimiento'] == 'Cobro a Cliente']['monto'].sum() or 0.0
         paf = df_h[df_h['tipo_movimiento'] == 'Pago a Fábrica']['monto'].sum() or 0.0
         gas = df_g['monto'].sum() or 0.0
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("COBROS", f"${ing:,.2f}"); c2.metric("PAGOS FAB", f"${paf:,.2f}"); c3.metric("GASTOS", f"${gas:,.2f}"); c4.metric("UTILIDAD", f"${(ing-paf-gas):,.2f}")
-        st.divider()
-        st.subheader("Historial de Movimientos")
-        st.dataframe(df_h, use_container_width=True)
+        st.dataframe(df_h.style.format({"monto": "${:,.2f}"}), use_container_width=True)
 
     with t2:
         if not df_p.empty:
             df_p['Por Cobrar'] = df_p['precio_venta'] - df_p['adelanto_cliente']
-            df_p['Por Pagar'] = df_p['costo_fabrica'] - df_p['adelanto_suplidor']
-            
+            df_p['Por Pagar'] = df_p['cost_fabrica'] - df_p['adelanto_suplidor']
             col_izq, col_der = st.columns(2)
-            
             with col_izq:
-                st.subheader("💰 Lo que te deben (Clientes)")
-                pend_cli = df_p[df_p['Por Cobrar'] > 0][['cliente', 'mueble', 'Por Cobrar']]
-                if not pend_cli.empty:
-                    st.table(pend_cli.style.format({"Por Cobrar": "${:,.2f}"}))
-                else:
-                    st.success("¡No hay cuentas por cobrar!")
-
+                st.subheader("💰 Cuentas Clientes")
+                st.table(df_p[df_p['Por Cobrar'] > 0][['cliente', 'mueble', 'Por Cobrar']].style.format("${:,.2f}"))
             with col_der:
-                st.subheader("🏭 Lo que debes (Suplidores)")
-                pend_sup = df_p[df_p['Por Pagar'] > 0][['suplidor', 'mueble', 'Por Pagar']]
-                if not pend_sup.empty:
-                    st.table(pend_sup.style.format({"Por Pagar": "${:,.2f}"}))
-                else:
-                    st.success("¡Cuentas con suplidores al día!")
-
-# --- OTROS MÓDULOS ---
-elif choice == "Ver / Gestionar Proyectos":
-    st.header("📋 Listado de Proyectos")
-    st.dataframe(pd.read_sql("SELECT * FROM proyectos", conn), use_container_width=True)
+                st.subheader("🏭 Cuentas Suplidores")
+                st.table(df_p[df_p['Por Pagar'] > 0][['suplidor', 'mueble', 'Por Pagar']].style.format("${:,.2f}"))
 
 elif choice == "Gastos Varios":
     st.header("⛽ Gastos Operativos")
     with st.form("g"):
         con = st.text_input("Concepto"); mon = st.number_input("Monto"); f = st.date_input("Fecha")
-        if st.form_submit_button("Guardar Gasto"):
+        if st.form_submit_button("Guardar"):
             c.execute("INSERT INTO gastos_varios (fecha, concepto, monto) VALUES (?,?,?)", (f.strftime("%Y-%m-%d"), con, mon))
             conn.commit(); st.rerun()

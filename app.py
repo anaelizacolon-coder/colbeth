@@ -15,7 +15,7 @@ c.execute('CREATE TABLE IF NOT EXISTS historial_pagos (id INTEGER PRIMARY KEY AU
 c.execute('CREATE TABLE IF NOT EXISTS gastos_varios (id INTEGER PRIMARY KEY AUTOINCREMENT, fecha TEXT, concepto TEXT, monto REAL)')
 conn.commit()
 
-st.set_page_config(page_title="Mueblería Pro v29", layout="wide")
+st.set_page_config(page_title="Colbeth v29.0", layout="wide")
 menu = ["Nuevo Proyecto", "Ver / Gestionar Proyectos", "Pagos y Abonos", "✏️ Corregir Datos", "Gastos Varios", "Reportes y Respaldo"]
 choice = st.sidebar.selectbox("Menú", menu)
 
@@ -112,13 +112,12 @@ elif choice == "✏️ Corregir Datos":
                         conn.commit()
                         st.rerun()
 
-# --- 4. REPORTES (RESTAURADO COMPLETO) ---
+# --- 4. REPORTES ---
 elif choice == "Reportes y Respaldo":
     st.header("📊 Inteligencia de Negocio")
     f1 = st.sidebar.date_input("Desde", date(date.today().year, date.today().month, 1))
     f2 = st.sidebar.date_input("Hasta", date.today())
     
-    # Consultas
     df_h = pd.read_sql(f"SELECT h.fecha, p.cliente, p.suplidor, h.tipo_movimiento, h.monto FROM historial_pagos h JOIN proyectos p ON h.proyecto_id = p.id WHERE h.fecha BETWEEN '{f1}' AND '{f2}'", conn)
     df_g = pd.read_sql(f"SELECT * FROM gastos_varios WHERE fecha BETWEEN '{f1}' AND '{f2}'", conn)
     df_p = pd.read_sql("SELECT * FROM proyectos", conn)
@@ -130,7 +129,10 @@ elif choice == "Reportes y Respaldo":
         paf = df_h[df_h['tipo_movimiento'] == 'Pago a Fábrica']['monto'].sum() or 0.0
         gas = df_g['monto'].sum() or 0.0
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("COBROS", f"${ing:,.2f}"); c2.metric("PAGOS FAB", f"${paf:,.2f}"); c3.metric("GASTOS", f"${gas:,.2f}"); c4.metric("UTILIDAD", f"${(ing-paf-gas):,.2f}")
+        c1.metric("COBROS", f"${ing:,.2f}")
+        c2.metric("PAGOS FAB", f"${paf:,.2f}")
+        c3.metric("GASTOS", f"${gas:,.2f}")
+        c4.metric("UTILIDAD", f"${(ing-paf-gas):,.2f}")
         st.divider()
         st.subheader("Historial de Movimientos")
         st.dataframe(df_h, use_container_width=True)
@@ -139,26 +141,18 @@ elif choice == "Reportes y Respaldo":
         if not df_p.empty:
             df_p['Por Cobrar'] = df_p['precio_venta'] - df_p['adelanto_cliente']
             df_p['Por Pagar'] = df_p['costo_fabrica'] - df_p['adelanto_suplidor']
-            
             col_izq, col_der = st.columns(2)
-            
             with col_izq:
-                st.subheader("💰 Lo que te deben (Clientes)")
+                st.subheader("💰 Deudas de Clientes")
                 pend_cli = df_p[df_p['Por Cobrar'] > 0][['cliente', 'mueble', 'Por Cobrar']]
                 if not pend_cli.empty:
                     st.table(pend_cli.style.format({"Por Cobrar": "${:,.2f}"}))
-                else:
-                    st.success("¡No hay cuentas por cobrar!")
-
             with col_der:
-                st.subheader("🏭 Lo que debes (Suplidores)")
+                st.subheader("🏭 Deuda a Suplidores")
                 pend_sup = df_p[df_p['Por Pagar'] > 0][['suplidor', 'mueble', 'Por Pagar']]
                 if not pend_sup.empty:
                     st.table(pend_sup.style.format({"Por Pagar": "${:,.2f}"}))
-                else:
-                    st.success("¡Cuentas con suplidores al día!")
 
-# --- OTROS MÓDULOS ---
 elif choice == "Ver / Gestionar Proyectos":
     st.header("📋 Listado de Proyectos")
     st.dataframe(pd.read_sql("SELECT * FROM proyectos", conn), use_container_width=True)
@@ -166,7 +160,10 @@ elif choice == "Ver / Gestionar Proyectos":
 elif choice == "Gastos Varios":
     st.header("⛽ Gastos Operativos")
     with st.form("g"):
-        con = st.text_input("Concepto"); mon = st.number_input("Monto"); f = st.date_input("Fecha")
+        con = st.text_input("Concepto")
+        mon = st.number_input("Monto")
+        f = st.date_input("Fecha")
         if st.form_submit_button("Guardar Gasto"):
             c.execute("INSERT INTO gastos_varios (fecha, concepto, monto) VALUES (?,?,?)", (f.strftime("%Y-%m-%d"), con, mon))
-            conn.commit(); st.rerun()
+            conn.commit()
+            st.rerun()

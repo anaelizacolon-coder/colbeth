@@ -95,14 +95,32 @@ elif choice == "Corregir Datos":
                 nc = st.text_input("Cliente", p['cliente'])
                 ns = st.text_input("Suplidor", p['suplidor'])
                 nm = st.text_area("Mueble", p['mueble'])
+               # ... (dentro del formulario e_pro)
                 nv = st.number_input("Venta", value=float(p['precio_venta']))
                 ncost = st.number_input("Costo", value=float(p['costo_fabrica']))
+                
+                # Agregamos estos dos para que también se puedan corregir saldos si es necesario
+                n_ade_cli = st.number_input("Adelanto Cliente Actual", value=float(p['adelanto_cliente']))
+                n_ade_sup = st.number_input("Adelanto Suplidor Actual", value=float(p['adelanto_suplidor']))
+                
                 nest = st.selectbox("Estado", ["En Proceso", "Entregado"], index=0 if p['estado']=="En Proceso" else 1)
+                
                 c_s, c_d = st.columns(2)
                 if c_s.form_submit_button("💾 ACTUALIZAR"):
-                    c.execute("UPDATE proyectos SET fecha_creacion=?, cliente=?, suplidor=?, mueble=?, precio_venta=?, costo_fabrica=?, estado=? WHERE id=?", (nf.strftime("%Y-%m-%d"), nc.upper(), ns.upper(), nm, nv, ncost, nest, id_p))
+                    # SQL actualizado con todas las columnas de la tabla proyectos
+                    c.execute("""
+                        UPDATE proyectos 
+                        SET fecha_creacion=?, cliente=?, suplidor=?, mueble=?, 
+                            precio_venta=?, costo_fabrica=?, adelanto_cliente=?, 
+                            adelanto_suplidor=?, estado=? 
+                        WHERE id=?
+                    """, (nf.strftime("%Y-%m-%d"), nc.upper(), ns.upper(), nm, 
+                          nv, ncost, n_ade_cli, n_ade_sup, nest, id_p))
                     conn.commit()
+                    st.success("✅ Proyecto actualizado con todos sus valores.")
                     st.rerun()
+                    
+                    
                 if c_d.form_submit_button("🗑️ ELIMINAR"):
                     if st.checkbox("Confirmar borrar proyecto e historial"):
                         c.execute("DELETE FROM proyectos WHERE id=?", (id_p,))

@@ -2,7 +2,28 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 from datetime import datetime, date
+# --- SISTEMA DE LOGIN SIMPLE ---
+def check_password():
+    def password_entered():
+        if st.session_state["password"] == "TuClave123": # <--- CAMBIA ESTA CLAVE
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]
+        else:
+            st.session_state["password_correct"] = False
 
+    if "password_correct" not in st.session_state:
+        st.text_input("Contraseña de Acceso", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        st.text_input("Contraseña de Acceso", type="password", on_change=password_entered, key="password")
+        st.error("😕 Contraseña incorrecta")
+        return False
+    else:
+        return True
+
+if not check_password():
+    st.stop() # Detiene la ejecución del resto del código si no hay clave
+# -------------------------------
 def get_connection():
     return sqlite3.connect('muebles_negocio.db', check_same_thread=False)
 
@@ -16,7 +37,7 @@ c.execute('CREATE TABLE IF NOT EXISTS gastos_varios (id INTEGER PRIMARY KEY AUTO
 conn.commit()
 
 st.set_page_config(page_title="Colbeth v29.0", layout="wide")
-menu = ["Nuevo Proyecto", "Ver / Gestionar Proyectos", "Pagos y Abonos", "✏️ Corregir Datos", "Gastos Varios", "Reportes y Respaldo"]
+menu = ["Nuevo Proyecto", "Ver / Gestionar Proyectos", "Pagos y Abonos", "Corregir Datos", "Gastos Varios", "Reportes y Respaldo"]
 choice = st.sidebar.selectbox("Menú", menu)
 
 # --- 1. NUEVO PROYECTO ---
@@ -60,7 +81,7 @@ elif choice == "Pagos y Abonos":
                 st.rerun()
 
 # --- 3. CORREGIR DATOS ---
-elif choice == "✏️ Corregir Datos":
+elif choice == "Corregir Datos":
     st.header("✏️ Editor Maestro")
     t1, t2 = st.tabs(["📋 Proyectos", "💸 Pagos Individuales"])
     with t1:
